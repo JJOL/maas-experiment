@@ -1,6 +1,11 @@
 # Model Training Data and Output
 training
 
+# Ignore Project Workspace files
+.vscode
+*.png
+*.jpg
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
