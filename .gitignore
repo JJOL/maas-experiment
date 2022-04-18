@@ -5,6 +5,8 @@ training
 .vscode
 *.png
 *.jpg
+wandb
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
