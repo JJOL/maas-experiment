@@ -27,6 +27,82 @@ else:
     print("Using CPU!")
 # device = torch.device('cpu')
 
+def run_experiment(run_config, wandb_run, play=False):
+    input_size = 3 if run_config["token_encoding"] == "Octuple" else 1
+    sequence_len = run_config["sequence_len"]
+    split_ratio = run_config["split_ratio"]
+    batch_size = run_config["batch_size"]
+    train_data, train_dataloader, test_data, test_dataloader = create_dataloader(run_config, sequence_len, split_ratio, batch_size, input_size)
+
+    classes = listdir(run_config["path"])
+    model = create_model(run_config, input_size, len(classes))
+    model = model.to(device)
+
+    train_model(model, train_data, train_dataloader, test_data, test_dataloader, run_config, run_config)
+
+    report_results(test_dataloader, model, classes, wandb_run)
+
+    play_model(play, run_config, input_size, model, classes)
+
+def report_results(test_dataloader, model, classes, wandb_run):
+    with torch.set_grad_enabled(False):
+        for feature_batch, labels_batch in test_dataloader:
+            feature_batch, labels_batch = feature_batch.to(device), labels_batch.to(device)
+            outputs = model(feature_batch)
+            _, predicted = torch.max(outputs.data, dim=1)
+
+            y_true = labels_batch.to(host_device).numpy()
+            y_pred = predicted.to(host_device).numpy()
+
+            # tn_hits = {}
+            # for i in range(len(y_true)):
+            #     if y_pred[i] == y_true[i]:
+            #         tn_hits[y]['TP']
+
+            cf_matrix = confusion_matrix(y_true, y_pred)
+            totals_per_class = np.sum(cf_matrix, axis=1)
+            
+            percentage_cf_matrix = np.array(cf_matrix, dtype=np.float32)
+            for i in range(len(classes)):
+                 percentage_cf_matrix[i,:] /= totals_per_class[i]
+            
+            # Absosulte Confusion Matrix
+            df_cm_abs = pd.DataFrame(cf_matrix, index = [i for i in classes],
+                                columns = [i for i in classes])
+            plt.figure(figsize = (12,7))
+            sn.heatmap(df_cm_abs, annot=True)
+            wandb.log({"confusion_matrix_abs": wandb.Image(plt)})
+            plt.savefig('conf_matrix_abs.png')
+
+            # Relative Confusion Matrix
+            df_cm_rel = pd.DataFrame(percentage_cf_matrix, index = [i for i in classes],
+                                columns = [i for i in classes])
+            plt.figure(figsize = (12,7))
+            sn.heatmap(df_cm_rel, annot=True)
+            wandb.log({"confusion_matrix_rel": wandb.Image(plt)})
+            plt.savefig('conf_matrix_rel.png')
+
+
+    wandb_run.finish()
+
+def play_model(play, run_config, input_size, model, classes):
+    # 5.1 Play with model?
+    while play:
+        cmd = str(input('Insert music token path or quit: '))
+        if cmd == 'quit':
+            break
+        
+        seqs_list = _read_music_tensor(cmd, run_config["sequence_len"], input_size)
+        seqs = torch.cat(seqs_list).view(len(seqs_list), 50, input_size).to(device)
+        # seq list([50, Hin])
+        with torch.set_grad_enabled(False):
+            outputs = model(seqs)
+            accumulated_output = torch.sum(outputs, dim=0)
+            accumulated_output = accumulated_output.view(1, len(classes))
+            _, predicted = torch.max(accumulated_output, dim=1)
+
+            print(f"The predicted class is: {classes[predicted.item()]}")
+
 def make_run(dataset_params, preprocessing_params, model_params, training_params, play=False):
     input_size = 3 if preprocessing_params["token_encoding"] == "Octuple" else 1
     # 1.1 Load Dataset
@@ -54,16 +130,33 @@ def make_run(dataset_params, preprocessing_params, model_params, training_params
             y_true = labels_batch.to(host_device).numpy()
             y_pred = predicted.to(host_device).numpy()
 
+            # tn_hits = {}
+            # for i in range(len(y_true)):
+            #     if y_pred[i] == y_true[i]:
+            #         tn_hits[y]['TP']
+
             cf_matrix = confusion_matrix(y_true, y_pred)
             totals_per_class = np.sum(cf_matrix, axis=1)
-            # for i in len(classes):
-            #     cf_matrix[i,:] /= totals_per_class[i]
-            df_cm = pd.DataFrame(cf_matrix, index = [i for i in classes],
+            
+            percentage_cf_matrix = np.array(cf_matrix, dtype=np.float32)
+            for i in range(len(classes)):
+                 percentage_cf_matrix[i,:] /= totals_per_class[i]
+            
+            # Absosulte Confusion Matrix
+            df_cm_abs = pd.DataFrame(cf_matrix, index = [i for i in classes],
                                 columns = [i for i in classes])
             plt.figure(figsize = (12,7))
-            sn.heatmap(df_cm, annot=True)
-            wandb.log({"confusion_matrix": wandb.Image(plt)})
-            plt.savefig('conf_matrix.png')
+            sn.heatmap(df_cm_abs, annot=True)
+            wandb.log({"confusion_matrix_abs": wandb.Image(plt)})
+            plt.savefig('conf_matrix_abs.png')
+
+            # Relative Confusion Matrix
+            df_cm_rel = pd.DataFrame(percentage_cf_matrix, index = [i for i in classes],
+                                columns = [i for i in classes])
+            plt.figure(figsize = (12,7))
+            sn.heatmap(df_cm_rel, annot=True)
+            wandb.log({"confusion_matrix_rel": wandb.Image(plt)})
+            plt.savefig('conf_matrix_rel.png')
 
 
     wb_run.finish()
@@ -289,43 +382,16 @@ def train_model(model, train_data, train_dataloader, test_data, test_dataloader,
     plt.plot(smoothed_accuracies, 'b--')
     plt.savefig('model_accuracy.jpg')
 
+    acc_fluctuation_err = np.array(smoothed_accuracies) - np.array(all_accuracies)
+    acc_fluct_err = np.sum(acc_fluctuation_err ** 2) / len(smoothed_accuracies)
+    wandb.log({'acc_vtmk': acc_fluct_err})
 
-if __name__ == "__main__":
-    dataset_params = {
-        "path": f"training/{sys.argv[1]}_token"
-    }
-    preprocessing_params = {
-        "token_encoding": "Octuple"
-    }
-    model_params = {
-        "model_type": "RNN", # [RNN, GRU, LSTM],
-        "preprocess": 'Normalized_Significant_Features', # -> 3 first columns of Octuple
-        "sequence_len": 50,
-        "hidden_size": 128,
-        "rnn_layers": 4
-    }
-    training_params = {
-        "split_ratio": 0.90,
-        "batch_size": 64,
-        "learning_rate": 0.005,
-        "epochs": 130,
-        "loss_function": "NLL",
-        "optimizer": "SGD" #[SGD, Adam]
-    }
+    smoothed_val_losses = smooth_filter(all_validation_losses)
+    valloss_fluctuation_err = np.array(smoothed_val_losses) - np.array(all_validation_losses)
+    valloss_fluct_err = np.sum(valloss_fluctuation_err ** 2) / len(smoothed_val_losses)
+    wandb.log({'val_loss_vtmk': valloss_fluct_err})
 
-    run_parameters = {}
-    for k in dataset_params:
-        run_parameters[k] = dataset_params[k]
-    for k in model_params:
-        run_parameters[k] = model_params[k]
-    for k in training_params:
-        run_parameters[k] = training_params[k]
-
-    wb_run = wandb.init(project="maas-genres",
-            entity="symbolic-music-patterns-props",
-            notes="Explore optimal RNN hyperparameters",
-            tags=["baseline", "binary_genres", "discovery"],
-            config = run_parameters
-        )
-    wandb.config = run_parameters
-    make_run(dataset_params, preprocessing_params, model_params, training_params, play=True)
+    smoothed_train_losses = smooth_filter(all_training_losses)
+    trainloss_fluctuation_err = np.array(smoothed_train_losses) - np.array(all_training_losses)
+    trainloss_fluct_err = np.sum(trainloss_fluctuation_err ** 2) / len(smoothed_train_losses)
+    wandb.log({'train_loss_vtmk': trainloss_fluct_err})

@@ -45,8 +45,8 @@ def tokenize(src_path, dest_path):
         min_len = token_len
         min_len_name = src_path
 
-    if count > 200:
-        quit()
+    # if count > 200:
+    #     quit()
     # print(f"File {src_path} has {len(tokens)}!")
 
     with open(dest_path, mode="w") as out_file:
