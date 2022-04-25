@@ -20,13 +20,15 @@ class TorchRNN(nn.Module):
         self.fcl = nn.Linear(hidden_size, output_size)
         self.softmax = nn.LogSoftmax(dim=1)
     
-    def forward(self, x):
+    def forward(self, x, x_mask):
         # N = x.size()[0]
         # h0 = torch.zeros(self.num_layers, N, self.hidden_size).to(device)
         out, _ = self.rnn(x)
-        # out = [N, L, H_size=128]
-        # out = torch.sum(out * x_mask, dim=1)
-        out = out[:, -1, :]
+        #out = [N, L, H_size=128]
+        # print(f"Out Size: {out.size()}") # [N, L=50, H_Size=256]
+        # print(f"Out Size: {x_mask.size()}") # [N, 50, 3]
+        out = torch.sum(out * x_mask, dim=1)
+        #out = out[:, -1, :]
         # out = [N, Hout]
         out = self.fcl(out)
         out = self.softmax(out)

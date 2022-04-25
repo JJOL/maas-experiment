@@ -13,15 +13,15 @@ if __name__ == "__main__":
     model_params = {
         "model_type": "GRU", # [RNN, GRU, LSTM],
         "preprocess": 'Normalized_Significant_Features', # -> 3 first columns of Octuple
-        "sequence_len": 50,
-        "hidden_size": 256,
-        "rnn_layers": 4
+        "sequence_len": 148,##50
+        "hidden_size": 187, ##256
+        "rnn_layers": 1 ##4
     }
     training_params = {
-        "split_ratio": 0.90,
-        "batch_size": 64,
-        "learning_rate": 0.005,
-        "epochs": 100,
+        "split_ratio": 0.826838, ##90
+        "batch_size": 123, ##64
+        "learning_rate": 0.0012399, ##0.005
+        "epochs": 138, ##100
         "loss_function": "NLL",
         "optimizer": "Adam" #[SGD, Adam]
     }
@@ -40,7 +40,7 @@ if __name__ == "__main__":
         project="maas-genres",
         entity="symbolic-music-patterns-props",
         notes="Explore optimal RNN hyperparameters",
-        tags=["baseline01", "gtzan_genres", "discovery"])
+        tags=["baseline02", "gtzan_genres", "discovery", "stability_test"])
     run_config = wandb.config
 
     run_experiment(run_config, wandb_run, play=False)

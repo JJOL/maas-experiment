@@ -15,6 +15,7 @@ import pandas as pd
 import numpy as np
 
 from small_rnn import TorchRNN
+from metrics import classification_scores
 
 import wandb
 wb_run = None
@@ -29,10 +30,11 @@ else:
 
 def run_experiment(run_config, wandb_run, play=False):
     input_size = 3 if run_config["token_encoding"] == "Octuple" else 1
+    hidden_size = run_config["hidden_size"]
     sequence_len = run_config["sequence_len"]
     split_ratio = run_config["split_ratio"]
     batch_size = run_config["batch_size"]
-    train_data, train_dataloader, test_data, test_dataloader = create_dataloader(run_config, sequence_len, split_ratio, batch_size, input_size)
+    train_data, train_dataloader, test_data, test_dataloader = create_dataloader(run_config, sequence_len, split_ratio, batch_size, input_size, hidden_size)
 
     classes = listdir(run_config["path"])
     model = create_model(run_config, input_size, len(classes))
@@ -48,7 +50,7 @@ def report_results(test_dataloader, model, classes, wandb_run):
     with torch.set_grad_enabled(False):
         for feature_batch, labels_batch in test_dataloader:
             feature_batch, labels_batch = feature_batch.to(device), labels_batch.to(device)
-            outputs = model(feature_batch)
+            outputs = model(feature_batch[:,:,:3], feature_batch[:,:,3:])
             _, predicted = torch.max(outputs.data, dim=1)
 
             y_true = labels_batch.to(host_device).numpy()
@@ -82,6 +84,9 @@ def report_results(test_dataloader, model, classes, wandb_run):
             wandb.log({"confusion_matrix_rel": wandb.Image(plt)})
             plt.savefig('conf_matrix_rel.png')
 
+            metrics = classification_scores(cf_matrix, len(classes))
+            wandb.log({"mean_f1": metrics["mean_f1"], "mean_precision": metrics["mean_precision"]})
+            
 
     wandb_run.finish()
 
@@ -183,7 +188,14 @@ def _padded_list(data, data_length, input_size):
     data = data + fillin
     return data
 
-def _read_music_tensor(file_path, max_token_len, input_size):
+def make_x_mask(length, position, input_size):
+    zero = [0]*input_size
+    one  = [1]*input_size
+    mask = [zero]*length
+    mask[position-1] = one
+    return mask
+
+def _read_music_tensor(file_path, max_token_len, input_size, hidden_size):
     token_data = []
     all_content = ""
 
@@ -204,25 +216,32 @@ def _read_music_tensor(file_path, max_token_len, input_size):
         token_data.append(token_els)
     
     if len(token_data) <= max_token_len:
-        return [torch.tensor(_padded_list(token_data, max_token_len, input_size))]
+        padded = torch.tensor(_padded_list(token_data, max_token_len, input_size))
+        mask = torch.tensor(make_x_mask(max_token_len, len(token_data), hidden_size))
+        
+        return [torch.cat((padded, mask), dim=1)]
     else:
         segments = []
         n = math.ceil(len(token_data) / max_token_len)
         for i in range(n):
             inf = i*max_token_len
-            sup = inf + max_token_len - 1
-            segments.append(torch.tensor(_padded_list(token_data[inf:sup], max_token_len, input_size)))
+            sup = inf + max_token_len
+            segment_token_data = token_data[inf:sup]
+
+            padded = torch.tensor(_padded_list(segment_token_data, max_token_len, input_size))
+            mask = torch.tensor(make_x_mask(max_token_len, len(segment_token_data), hidden_size))
+            segments.append(torch.cat((padded, mask), dim=1))
         return segments
 
 def _cat_index_tensor(category, categories):
     return categories.index(category)
 
-def get_data_splitted(dataset_path, sequence_len, split_ratio, input_size):
+def get_data_splitted(dataset_path, sequence_len, split_ratio, input_size, hidden_size):
     categories = listdir(dataset_path)
     data = []
     for cat in categories:
         for sample in listdir(f"{dataset_path}/{cat}"):
-            segments = _read_music_tensor(f"{dataset_path}/{cat}/{sample}", sequence_len, input_size)
+            segments = _read_music_tensor(f"{dataset_path}/{cat}/{sample}", sequence_len, input_size, hidden_size)
             label_tensor = _cat_index_tensor(cat, categories)
             for token_tensor in segments:
                 data.append((token_tensor, label_tensor))
@@ -275,9 +294,9 @@ class TokenFileDataset(Dataset):
 """
 create_dataloader()
 """
-def create_dataloader(dataset, sequence_len: int, split_ratio: float, batch_size: int, input_size: int):
+def create_dataloader(dataset, sequence_len: int, split_ratio: float, batch_size: int, input_size: int, hidden_size: int):
     """Returns train and test pytorch.Datasets and respective pytorch.Dataloaders in form (train_dataset, train_dataloader, test_dataset, test_dataloader)"""
-    train_data, test_data = get_data_splitted(dataset['path'], sequence_len, split_ratio, input_size)
+    train_data, test_data = get_data_splitted(dataset['path'], sequence_len, split_ratio, input_size, hidden_size)
     # train_data, test_data = get_column_reduced(train_data, test_data)
     # train_data, test_data = get_normalized_data(train_data, test_data)
     # Each x = [3]
@@ -332,7 +351,7 @@ def train_model(model, train_data, train_dataloader, test_data, test_dataloader,
 
             optimizer.zero_grad()
             data_batch, label_batch = data_batch.to(device), label_batch.to(device)
-            labels = model(data_batch)
+            labels = model(data_batch[:,:,:3], data_batch[:,:,3:])
             loss = criterion(labels, label_batch)
             training_loss += loss.item()
             loss.backward()
@@ -347,7 +366,7 @@ def train_model(model, train_data, train_dataloader, test_data, test_dataloader,
             n_samples = 0
             for data_batch, label_batch in test_dataloader:
                 data_batch, label_batch = data_batch.to(device), label_batch.to(device)
-                outputs = model(data_batch)
+                outputs = model(data_batch[:,:,:3], data_batch[:,:,3:])
                 # print(f"Val Output Size: {outputs.size()}")
                 # print(f"Val Batch outputs size: {label_batch.size()}")
 
