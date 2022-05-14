@@ -22,9 +22,9 @@ def classification_scores(abs_conf_matrix, n_classes):
         precisions.append(precision)
         recalls.append(recall)
     
-    metrics["mean_f1"] = sum(f1s) / n_classes
-    metrics["mean_precision"] = sum(precisions) / n_classes
-    metrics["mean_recall"] = sum(recalls) / n_classes
+    metrics["average_f1"] = sum(f1s) / n_classes
+    metrics["average_precision"] = sum(precisions) / n_classes
+    metrics["average_recall"] = sum(recalls) / n_classes
 
 
     return metrics

@@ -4,7 +4,7 @@ import torch
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 class TorchRNN(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, model_type, n_layers):
+    def __init__(self, input_size, hidden_size, output_size, model_type, n_layers, model_params):
         super(TorchRNN, self).__init__()
         self.hidden_size = hidden_size
         self.output_size = output_size
@@ -13,10 +13,12 @@ class TorchRNN(nn.Module):
         if model_type == 'RNN':
             self.rnn = nn.RNN(input_size, hidden_size, self.num_layers, batch_first=True)
         elif model_type == 'GRU':
-            self.rnn = nn.GRU(input_size, hidden_size, self.num_layers, batch_first=True)
+            self.rnn = nn.GRU(input_size, hidden_size, self.num_layers, batch_first=True, dropout=model_params["rnn_dropout"])
         elif model_type == 'LSTM':
             self.rnn = nn.LSTM(input_size, hidden_size, self.num_layers, batch_first=True)
-
+        
+        self.use_dropout = model_params["fcl_dropout"] > 0
+        self.dropout = nn.Dropout(model_params["fcl_dropout"])
         self.fcl = nn.Linear(hidden_size, output_size)
         self.softmax = nn.LogSoftmax(dim=1)
     
@@ -30,6 +32,9 @@ class TorchRNN(nn.Module):
         out = torch.sum(out * x_mask, dim=1)
         #out = out[:, -1, :]
         # out = [N, Hout]
+        if self.use_dropout:
+            out = self.dropout(out)
+            
         out = self.fcl(out)
         out = self.softmax(out)
         return out

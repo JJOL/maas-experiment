@@ -1,5 +1,6 @@
 # Model Training Data and Output
 training
+metrics_output
 
 # Ignore Project Workspace files
 .vscode
