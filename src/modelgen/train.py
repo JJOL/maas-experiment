@@ -218,28 +218,41 @@ def report_results(test_dataloader, model, classes, kfold):
             #     if y_pred[i] == y_true[i]:
             #         tn_hits[y]['TP']
 
-        cf_matrix = confusion_matrix(y_true, y_pred)
-        totals_per_class = np.sum(cf_matrix, axis=1)
-        
-        percentage_cf_matrix = np.array(cf_matrix, dtype=np.float32)
-        for i in range(len(classes)):
-                percentage_cf_matrix[i,:] /= totals_per_class[i]
         
         # Absosulte Confusion Matrix
+        cf_matrix = confusion_matrix(y_true, y_pred)
         df_cm_abs = pd.DataFrame(cf_matrix, index = [i for i in classes],
                             columns = [i for i in classes])
         plt.figure(figsize = (12,7))
         sn.heatmap(df_cm_abs, annot=True)
-        wandb.log({"confusion_matrix_abs": wandb.Image(plt)})
+        wandb.log({f"k{kfold}_confusion_matrix_abs": wandb.Image(plt)})
         plt.savefig(f'metrics_output/k{kfold}_conf_matrix_abs.png')
 
-        # Relative Confusion Matrix
-        df_cm_rel = pd.DataFrame(percentage_cf_matrix, index = [i for i in classes],
+        # Relative Recall Confusion Matrix
+        percentage_cf_matrix = np.array(cf_matrix, dtype=np.float32)
+        totals_per_class = np.sum(cf_matrix, axis=1)
+        for i in range(len(classes)):
+                percentage_cf_matrix[i,:] /= totals_per_class[i]
+        df_cm_rec = pd.DataFrame(percentage_cf_matrix, index = [i for i in classes],
                             columns = [i for i in classes])
+
         plt.figure(figsize = (12,7))
-        sn.heatmap(df_cm_rel, annot=True)
-        wandb.log({"confusion_matrix_rel": wandb.Image(plt)})
-        plt.savefig(f'metrics_output/k{kfold}_conf_matrix_rel.png')
+        sn.heatmap(df_cm_rec, annot=True)
+        # wandb.log({f"k{kfold}_confusion_matrix_recall": wandb.Image(plt)})
+        plt.savefig(f'metrics_output/k{kfold}_conf_matrix_recall.png')
+
+        # Relative Precision Confusion Matrix
+        percentage_cf_matrix = np.array(cf_matrix, dtype=np.float32)
+        totals_per_class = np.sum(cf_matrix, axis=0)
+        for i in range(len(classes)):
+                percentage_cf_matrix[:,i] /= totals_per_class[i]
+        df_cm_prec = pd.DataFrame(percentage_cf_matrix, index = [i for i in classes],
+                            columns = [i for i in classes])
+
+        plt.figure(figsize = (12,7))
+        sn.heatmap(df_cm_prec, annot=True)
+        wandb.log({f"k{kfold}_confusion_matrix_precision": wandb.Image(plt)})
+        plt.savefig(f'metrics_output/k{kfold}_conf_matrix_precision.png')
 
         metrics = classification_scores(cf_matrix, len(classes))
         wandb.log({"average_f1": metrics["average_f1"], "average_precision": metrics["average_precision"]})

@@ -33,11 +33,10 @@ if __name__ == "__main__":
     }
 
     wandb_run = wandb.init(config=default_config,
-        mode="disabled",
         project="maas-genres",
         entity="symbolic-music-patterns-props",
-        notes="Explore optimal RNN hyperparameters",
-        tags=["gtzan_genres", "discovery", "baseline05"])
+        notes="Experiment X Config 1",
+        tags=["gtzan_genres", "official", "baseline01", "low_transcription", "low_classification"])
     run_config = wandb.config
 
     wandb.log({ "rand_seed": RD_SEED })
