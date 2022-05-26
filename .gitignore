@@ -1,6 +1,7 @@
 # Model Training Data and Output
 training
 metrics_output
+t5x_workspace
 
 # Ignore Project Workspace files
 .vscode

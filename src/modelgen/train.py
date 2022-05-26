@@ -12,7 +12,7 @@ import seaborn as sn
 import pandas as pd
 import numpy as np
 
-from dataloading import get_all_data_names, get_data_by_kgroup, TokenFileDataset
+from dataloading import get_all_data_names, get_data_by_kgroup, TokenFileDataset, _select_items
 
 from small_rnn import TorchRNN
 from metrics import classification_scores
@@ -48,10 +48,31 @@ def run_experiment(run_config, wandb_run, play=False):
     kf = KFold(n_splits=K_FOLDS, shuffle=True, random_state=run_config["rd_seed"])
     for k_index, (train_index, test_index) in enumerate(kf.split(all_dataset_names)):
         print(f"Fold {k_index+1}#:")
+        freq_table = {
+            "train_Positive": 0,
+            "train_Negative": 0,
+            "test_Positive": 0,
+            "test_Negative": 0
+        }
+        for train_samp in _select_items(all_dataset_names, train_index):
+            if train_samp.startswith("_Whats_Going"):
+                freq_table["train_Positive"] += 1
+            else:
+                freq_table["train_Negative"] += 1
+        for train_samp in _select_items(all_dataset_names, test_index):
+            if train_samp.startswith("_Whats_Going"):
+                freq_table["test_Positive"] += 1
+            else:
+                freq_table["test_Negative"] += 1
+
+        print(f"|Train P\tTrain N\n|{freq_table['train_Positive']}\t{freq_table['train_Negative']}")
+        print(f"|Test P\tTest N\n|{freq_table['test_Positive']}\t{freq_table['test_Negative']}")
 
         model = create_model(run_config, input_size, n_classes)
 
         train_dataloader, test_dataloader = create_dataloader(run_config, train_index, test_index, input_size)
+        # if k_index != 4:
+        #     continue
         train_model(model, train_dataloader, test_dataloader, run_config, k_index)
         metrics = report_results(test_dataloader, model, classes, k_index)
         cross_val_metrics["mean_average_f1"] += (metrics["average_f1"] / K_FOLDS)
