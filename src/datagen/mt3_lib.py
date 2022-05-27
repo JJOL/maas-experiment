@@ -36,7 +36,7 @@ def get_audio(wav_file, sample_rate):
 class InferenceModel(object):
   """Wrapper of T5X model for music transcription."""
 
-  def __init__(self, checkpoint_path, model_type='mt3'):
+  def __init__(self, base_path, checkpoint_path, model_type='mt3'):
 
     # Model Constants.
     if model_type == 'ismir2021':
@@ -50,8 +50,9 @@ class InferenceModel(object):
     else:
       raise ValueError('unknown model_type: %s' % model_type)
 
-    gin_files = ['/home/jjolme/Tesina/maas-experiment/t5x_workspace/mt3/gin/model.gin',
-                 f'/home/jjolme/Tesina/maas-experiment/t5x_workspace/mt3/gin/{model_type}.gin']
+    
+    gin_files = [os.path.join(base_path, 'mt3/gin/model.gin'),
+                 os.path.join(base_path, f'mt3/gin/{model_type}.gin')]
 
     self.batch_size = 8
     self.outputs_length = 1024
@@ -229,12 +230,12 @@ class InferenceModel(object):
     return tokens
 
 
-def transcribe(wav, model, output):
+def transcribe(wav, base_path, output):
   audio = get_audio(wav, SAMPLE_RATE)
 
   MODEL = "mt3"
-  checkpoint_path = '/home/jjolme/Tesina/maas-experiment/t5x_workspace/checkpoints/mt3/'
-  inference_model = InferenceModel(checkpoint_path, MODEL)
+  checkpoint_path = os.path.join(base_path, f'checkpoints/{MODEL}')
+  inference_model = InferenceModel(base_path, checkpoint_path, MODEL)
 
   est_ns = inference_model(audio)
 

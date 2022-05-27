@@ -37,7 +37,7 @@ if __name__ == "__main__":
         project="maas-genres",
         entity="symbolic-music-patterns-props",
         notes="Experiment X Config 1",
-        tags=["covers80_covers", "discovery", "low_transcription", "low_classification"])
+        tags=["pianos_covers", "discovery", "low_transcription", "low_classification"])
     run_config = wandb.config
 
     wandb.log({ "rand_seed": RD_SEED })

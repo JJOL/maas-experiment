@@ -14,11 +14,13 @@ sudo apt-get install libsndfile-dev fluidsynth ffmpeg
 # Install Omnizart
 pip install omnizart
 
+# Additional Updates
+pip install numba
+
 # Then download the checkpoints
 omnizart download-checkpoints
 
-# Additional Updates
-pip install numba
+
 
 
 
