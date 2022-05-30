@@ -33,7 +33,8 @@ else:
     print("Using CPU!")
 
 def run_experiment(run_config, wandb_run, play=False):
-    input_size = 3 if run_config["token_encoding"] == "Octuple" else 1
+    input_size = 3 if run_config["token_encoding"] == "Octuple" else 10
+    run_config["input_size"] = input_size
     classes = listdir(run_config["path"])
     n_classes = len(classes)
 
@@ -48,33 +49,33 @@ def run_experiment(run_config, wandb_run, play=False):
     kf = KFold(n_splits=K_FOLDS, shuffle=True, random_state=run_config["rd_seed"])
     for k_index, (train_index, test_index) in enumerate(kf.split(all_dataset_names)):
         print(f"Fold {k_index+1}#:")
-        freq_table = {
-            "train_Positive": 0,
-            "train_Negative": 0,
-            "test_Positive": 0,
-            "test_Negative": 0
-        }
-        for train_samp in _select_items(all_dataset_names, train_index):
-            if train_samp.startswith("_Whats_Going"):
-                freq_table["train_Positive"] += 1
-            else:
-                freq_table["train_Negative"] += 1
-        for train_samp in _select_items(all_dataset_names, test_index):
-            if train_samp.startswith("_Whats_Going"):
-                freq_table["test_Positive"] += 1
-            else:
-                freq_table["test_Negative"] += 1
+        # freq_table = {
+        #     "train_Positive": 0,
+        #     "train_Negative": 0,
+        #     "test_Positive": 0,
+        #     "test_Negative": 0
+        # }
+        # for train_samp in _select_items(all_dataset_names, train_index):
+        #     if train_samp.startswith("_Whats_Going"):
+        #         freq_table["train_Positive"] += 1
+        #     else:
+        #         freq_table["train_Negative"] += 1
+        # for train_samp in _select_items(all_dataset_names, test_index):
+        #     if train_samp.startswith("_Whats_Going"):
+        #         freq_table["test_Positive"] += 1
+        #     else:
+        #         freq_table["test_Negative"] += 1
 
-        print(f"|Train P\tTrain N\n|{freq_table['train_Positive']}\t{freq_table['train_Negative']}")
-        print(f"|Test P\tTest N\n|{freq_table['test_Positive']}\t{freq_table['test_Negative']}")
-
+        # print(f"|Train P\tTrain N\n|{freq_table['train_Positive']}\t{freq_table['train_Negative']}")
+        # print(f"|Test P\tTest N\n|{freq_table['test_Positive']}\t{freq_table['test_Negative']}")
+        print("Creating model....")
         model = create_model(run_config, input_size, n_classes)
 
         train_dataloader, test_dataloader = create_dataloader(run_config, train_index, test_index, input_size)
         # if k_index != 4:
         #     continue
         train_model(model, train_dataloader, test_dataloader, run_config, k_index)
-        metrics = report_results(test_dataloader, model, classes, k_index)
+        metrics = report_results(test_dataloader, model, classes, k_index, run_config["input_size"])
         cross_val_metrics["mean_average_f1"] += (metrics["average_f1"] / K_FOLDS)
         cross_val_metrics["mean_average_precision"] += (metrics["average_precision"] / K_FOLDS)
         
@@ -111,7 +112,7 @@ def create_dataloader(config, train_index, test_index, input_size):
     train_data, test_data = get_data_by_kgroup(config['path'], config['sequence_len'], input_size, config['hidden_size'], train_index, test_index)
 
     train_dataloader =  DataLoader(TokenFileDataset(train_data), batch_size=config['batch_size'], shuffle=True)
-    test_dataloader =  DataLoader(TokenFileDataset(test_data), shuffle=True, batch_size=len(test_data))
+    test_dataloader =  DataLoader(TokenFileDataset(test_data), shuffle=True, batch_size=min(128, len(test_data)))
 
     return train_dataloader, test_dataloader
     
@@ -134,6 +135,7 @@ def _smooth_filter(values_arr):
 def train_model(model, train_dataloader, test_dataloader, training_params, kfold):
     print("Training Model...\n\n")
     lr = training_params["learning_rate"]
+    input_size = training_params["input_size"]
     criterion = nn.NLLLoss()
 
     if training_params["optimizer"] == "SGD":
@@ -155,10 +157,9 @@ def train_model(model, train_dataloader, test_dataloader, training_params, kfold
         for j, (data_batch, label_batch) in enumerate(train_dataloader):
             # if j % batch_limit == 0:
             #     print(f"Batch #{j} - {j*10}%...")
-
             optimizer.zero_grad()
             data_batch, label_batch = data_batch.to(device), label_batch.to(device)
-            labels = model(data_batch[:,:,:3], data_batch[:,:,3:])
+            labels = model(data_batch[:,:,:input_size], data_batch[:,:,input_size:])
             loss = criterion(labels, label_batch)
             training_loss += loss.item()
             loss.backward()
@@ -173,7 +174,7 @@ def train_model(model, train_dataloader, test_dataloader, training_params, kfold
             n_samples = 0
             for data_batch, label_batch in test_dataloader:
                 data_batch, label_batch = data_batch.to(device), label_batch.to(device)
-                outputs = model(data_batch[:,:,:3], data_batch[:,:,3:])
+                outputs = model(data_batch[:,:,:input_size], data_batch[:,:,input_size:])
                 # print(f"Val Output Size: {outputs.size()}")
                 # print(f"Val Batch outputs size: {label_batch.size()}")
 
@@ -184,6 +185,8 @@ def train_model(model, train_dataloader, test_dataloader, training_params, kfold
                 _, predicted = torch.max(outputs.data, dim=1)
                 n_samples += outputs.size(0)
                 n_correct += (predicted == label_batch).sum().item()
+            
+            validation_loss = validation_loss / len(test_dataloader)
 
             acc = 100.0 * n_correct / n_samples
             all_accuracies.append(acc)
@@ -224,15 +227,19 @@ def train_model(model, train_dataloader, test_dataloader, training_params, kfold
 
 
     
-def report_results(test_dataloader, model, classes, kfold):
+def report_results(test_dataloader, model, classes, kfold, input_size):
+    y_true = np.array([], dtype=np.int32)
+    y_pred = np.array([], dtype=np.int32)
     with torch.set_grad_enabled(False):
         for feature_batch, labels_batch in test_dataloader:
             feature_batch, labels_batch = feature_batch.to(device), labels_batch.to(device)
-            outputs = model(feature_batch[:,:,:3], feature_batch[:,:,3:])
+            outputs = model(feature_batch[:,:,:input_size], feature_batch[:,:,input_size:])
             _, predicted = torch.max(outputs.data, dim=1)
 
-            y_true = labels_batch.to(host_device).numpy()
-            y_pred = predicted.to(host_device).numpy()
+            # y_true = labels_batch.to(host_device).numpy()
+            # y_pred = predicted.to(host_device).numpy()
+            y_true = np.concatenate((y_true, labels_batch.to(host_device).numpy()))
+            y_pred = np.concatenate((y_pred, predicted.to(host_device).numpy()))
 
             # tn_hits = {}
             # for i in range(len(y_true)):

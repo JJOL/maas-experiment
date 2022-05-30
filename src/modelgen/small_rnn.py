@@ -4,11 +4,12 @@ import torch
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 class TorchRNN(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, model_type, n_layers, model_params):
+    def __init__(self, input_size, hidden_size, output_size, model_type, n_layers, model_params, long_rnn=False):
         super(TorchRNN, self).__init__()
         self.hidden_size = hidden_size
         self.output_size = output_size
         self.num_layers = n_layers
+        self.long_rnn = long_rnn
 
         if model_type == 'RNN':
             self.rnn = nn.RNN(input_size, hidden_size, self.num_layers, batch_first=True)
@@ -19,8 +20,12 @@ class TorchRNN(nn.Module):
         
         self.use_dropout = model_params["fcl_dropout"] > 0
         self.dropout = nn.Dropout(model_params["fcl_dropout"])
-        self.fcl = nn.Linear(hidden_size, output_size)
-        self.softmax = nn.LogSoftmax(dim=1)
+        if long_rnn:
+            self.fcl_int = nn.Linear(hidden_size, int(hidden_size / 2))
+            self.fcl = nn.Linear(int(hidden_size / 2), output_size)
+        else:
+            self.fcl = nn.Linear(hidden_size, output_size)
+            self.softmax = nn.LogSoftmax(dim=1)
     
     def forward(self, x, x_mask):
         # N = x.size()[0]
@@ -34,7 +39,9 @@ class TorchRNN(nn.Module):
         # out = [N, Hout]
         if self.use_dropout:
             out = self.dropout(out)
-            
+        
+        if self.long_rnn:
+            out = self.fcl_int(out)
         out = self.fcl(out)
         out = self.softmax(out)
         return out

@@ -37,12 +37,13 @@ def _read_music_tensor(file_path, max_token_len, input_size, hidden_size):
         if line == None or line == '':
             continue
         token_els = line.split(',')
-        token_els = token_els[0:3] #TODO Put in another place column trim filter
+        token_els = token_els[0:input_size] #TODO Put in another place column trim filter
         token_els = [float(n) for n in token_els]
-        n_pitch = (token_els[0] - 2) / (86 - 2) #TODO Put in another place normalization
-        n_vel   = (token_els[1] - 116) / (120 - 116)
-        n_dur   = (token_els[2] - 121) / (184 - 121)
-        token_els = [n_pitch, n_vel, n_dur]
+        if input_size != 10:
+            n_pitch = (token_els[0] - 2) / (86 - 2) #TODO Put in another place normalization
+            n_vel   = (token_els[1] - 116) / (120 - 116)
+            n_dur   = (token_els[2] - 121) / (184 - 121)
+            token_els = [n_pitch, n_vel, n_dur]
         token_data.append(token_els)
     
     if len(token_data) <= max_token_len:
@@ -58,6 +59,11 @@ def _read_music_tensor(file_path, max_token_len, input_size, hidden_size):
             sup = inf + max_token_len
             segment_token_data = token_data[inf:sup]
 
+            # ps = ""
+            # p = _padded_list(segment_token_data, max_token_len, input_size)
+            # for item in p:
+            #     ps += f"{len(item)},"
+            # print(f"{len(p)}:{ps}")
             padded = torch.tensor(_padded_list(segment_token_data, max_token_len, input_size))
             mask = torch.tensor(_make_x_mask(max_token_len, len(segment_token_data), hidden_size))
             segments.append(torch.cat((padded, mask), dim=1))

@@ -26,7 +26,7 @@ def convert(src_path, dest_path, method):
     if not os.path.isdir(src_path):
         print(f"Processing file {src_name}")
         if src_name[-4:] == ".wav":
-            if os.path.exists(dest_path):
+            if os.path.exists(f"{dest_path}.mid"):
                 print("File already processed! Ignoring...")
                 return
             if method == "mt3":
